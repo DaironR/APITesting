@@ -1,12 +1,15 @@
 name: API Tests
 
-# When should this pipeline run?
 on:
   push:
-    branches: [ main, master ]
+    branches: [main, master]
   pull_request:
-    branches: [ main, master ]
-  workflow_dispatch:   # lets you run it manually from the GitHub "Actions" tab
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  checks: write
 
 jobs:
   api-tests:
@@ -14,53 +17,55 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Grab the code from the repository
+      # 1. Descargar el repositorio
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
-      # 2. Install Java 21 and cache Maven dependencies for faster runs
+      # 2. Instalar Java 21
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '21'
           cache: maven
 
-      # 3. Run the test suite (using the Maven Wrapper, no Maven install needed)
-      #    'continue-on-error' so the report still gets built even if tests fail
-      - name: Run tests
-        run: ./mvnw test
-        continue-on-error: true
+      # 3. Corregir permisos del Maven Wrapper
+      - name: Set Maven Wrapper permissions
+        run: chmod +x mvnw
 
-      # 4. Build the Allure HTML report from the results
+      # 4. Ejecutar pruebas API
+      - name: Run REST Assured API Tests
+        run: ./mvnw --batch-mode clean test
+
+      # 5. Generar reporte Allure
       - name: Generate Allure report
-        if: always()
-        run: ./mvnw allure:report
+        if: always() && hashFiles('target/allure-results/*') != ''
+        run: ./mvnw --batch-mode allure:report
 
-      # 5. Upload the raw results as an artifact (downloadable from the run page)
+      # 6. Guardar resultados Allure
       - name: Upload Allure results
-        if: always()
-        uses: actions/upload-artifact@v4
+        if: always() && hashFiles('target/allure-results/*') != ''
+        uses: actions/upload-artifact@v7
         with:
           name: allure-results
           path: target/allure-results
           retention-days: 14
 
-      # 6. Upload the ready-to-view HTML report
+      # 7. Guardar reporte HTML Allure
       - name: Upload Allure report
-        if: always()
-        uses: actions/upload-artifact@v4
+        if: always() && hashFiles('target/site/allure-maven-plugin/*') != ''
+        uses: actions/upload-artifact@v7
         with:
           name: allure-report
           path: target/site/allure-maven-plugin
           retention-days: 14
 
-      # 7. Publish the JUnit-style results so failures show up in the run summary
+      # 8. Publicar resultados JUnit
       - name: Publish test summary
-        if: always()
-        uses: dorny/test-reporter@v1
+        if: always() && hashFiles('target/surefire-reports/TEST-*.xml') != ''
+        uses: dorny/test-reporter@v3
         with:
-          name: TestNG Results
-          path: target/surefire-reports/junitreports/*.xml
+          name: REST Assured Test Results
+          path: target/surefire-reports/TEST-*.xml
           reporter: java-junit
           fail-on-error: false

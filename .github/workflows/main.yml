@@ -1,0 +1,66 @@
+name: API Tests
+
+# When should this pipeline run?
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:   # lets you run it manually from the GitHub "Actions" tab
+
+jobs:
+  api-tests:
+    name: Run REST Assured API Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Grab the code from the repository
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 2. Install Java 21 and cache Maven dependencies for faster runs
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      # 3. Run the test suite (using the Maven Wrapper, no Maven install needed)
+      #    'continue-on-error' so the report still gets built even if tests fail
+      - name: Run tests
+        run: ./mvnw test
+        continue-on-error: true
+
+      # 4. Build the Allure HTML report from the results
+      - name: Generate Allure report
+        if: always()
+        run: ./mvnw allure:report
+
+      # 5. Upload the raw results as an artifact (downloadable from the run page)
+      - name: Upload Allure results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: allure-results
+          path: target/allure-results
+          retention-days: 14
+
+      # 6. Upload the ready-to-view HTML report
+      - name: Upload Allure report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: allure-report
+          path: target/site/allure-maven-plugin
+          retention-days: 14
+
+      # 7. Publish the JUnit-style results so failures show up in the run summary
+      - name: Publish test summary
+        if: always()
+        uses: dorny/test-reporter@v1
+        with:
+          name: TestNG Results
+          path: target/surefire-reports/junitreports/*.xml
+          reporter: java-junit
+          fail-on-error: false
